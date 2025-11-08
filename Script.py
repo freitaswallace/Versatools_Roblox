@@ -1036,13 +1036,13 @@ local function UpdateHighlights()
                     if humanoid and humanoid.Health > 0 then
                         local highlight = Instance.new("Highlight")
                         highlight.Name = "ESPHighlight"
-                        highlight.FillColor = Color3.fromRGB(255, 255, 255)
+                        highlight.FillColor = Color3.fromRGB(255, 0, 0)
                         highlight.FillTransparency = 1
-                        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                        highlight.OutlineColor = Color3.fromRGB(255, 70, 70)
                         highlight.OutlineTransparency = 0
                         highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                         highlight.Parent = character
-                        
+
                         print("✓ Highlight criado para: " .. player.Name)
                     end
                 end
