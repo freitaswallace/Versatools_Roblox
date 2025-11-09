@@ -1219,26 +1219,74 @@ local function isVisible(part)
     return false
 end
 
--- CORRIGIDO: Função agora usa a variável global aimbotTargetPart
+-- NOVO: Função para obter a melhor parte disponível do alvo (universal)
+local function getBestTargetPart(character)
+    -- Lista de partes em ordem de prioridade
+    local partPriority = {
+        aimbotTargetPart,  -- Parte escolhida pelo usuário
+        "Head",
+        "UpperTorso",
+        "HumanoidRootPart",
+        "Torso",
+        "LowerTorso"
+    }
+
+    for _, partName in ipairs(partPriority) do
+        local part = character:FindFirstChild(partName)
+        if part and part:IsA("BasePart") then
+            return part
+        end
+    end
+
+    -- Fallback: retorna qualquer BasePart do personagem
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            return part
+        end
+    end
+
+    return nil
+end
+
+-- NOVO: Calcula posição prevista do alvo baseado na velocidade
+local function getPredictedPosition(targetPart)
+    if not targetPart or not targetPart:IsA("BasePart") then
+        return targetPart and targetPart.Position or Vector3.new()
+    end
+
+    local velocity = targetPart.AssemblyLinearVelocity or targetPart.Velocity or Vector3.new()
+    local distance = (targetPart.Position - Camera.CFrame.Position).Magnitude
+    local timeToHit = distance / 500  -- Ajuste baseado na velocidade do projétil (500 studs/s é padrão)
+
+    -- Aplica prediction personalizada
+    return targetPart.Position + (velocity * (timeToHit + aimbotPrediction))
+end
+
+-- MELHORADO: Função universalmente compatível com detecção automática de partes
 local function getClosestPartToPoint(aimPoint)
     local closestPart = nil
     local shortestDist = aimbotFovRadius
+
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= Player and p.Character then
-            -- NOVO: Ignora amigos
+            -- Ignora amigos
             if friendsList[p.Name] then continue end
-            
+
+            -- Verifica team check
             if aimbotTeamCheck and p.Team == Player.Team then continue end
-            
+
+            -- Verifica se está vivo
             local humanoid = p.Character:FindFirstChildOfClass("Humanoid")
             if not (humanoid and humanoid.Health > 0) then continue end
-            
-            -- CORRIGIDO: Usa a variável global aimbotTargetPart e valida se existe
-            local targetBodyPart = p.Character:FindFirstChild(aimbotTargetPart)
+
+            -- NOVO: Usa sistema de detecção automática de partes
+            local targetBodyPart = getBestTargetPart(p.Character)
             if not targetBodyPart then continue end
-            
-            local pos, onScreen = Camera:WorldToViewportPoint(targetBodyPart.Position)
-            
+
+            -- Calcula posição com prediction
+            local predictedPos = getPredictedPosition(targetBodyPart)
+            local pos, onScreen = Camera:WorldToViewportPoint(predictedPos)
+
             if onScreen then
                 local dist = (Vector2.new(pos.X, pos.Y) - aimPoint).Magnitude
                 if dist < shortestDist and isVisible(targetBodyPart) then
@@ -1251,26 +1299,41 @@ local function getClosestPartToPoint(aimPoint)
     return closestPart
 end
 
+-- MELHORADO: Suavização aprimorada com prediction
 local function smoothLookAt(target)
+    if not target or not target:IsA("BasePart") then return end
+
+    local predictedPos = getPredictedPosition(target)
     local startCFrame = Camera.CFrame
-    local endCFrame = CFrame.new(Camera.CFrame.Position, target.Position)
-    local newCFrame = startCFrame:Lerp(endCFrame, 1 - aimbotSmoothingFactor)
+    local endCFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
+
+    -- Suavização mais precisa
+    local smoothness = 1 - aimbotSmoothingFactor
+    local newCFrame = startCFrame:Lerp(endCFrame, smoothness)
     Camera.CFrame = newCFrame
 end
 
+-- MELHORADO: Modo mouse universal (funciona mesmo sem mousemoverel)
 local function moveMouseTowards(target)
-    if not mousemoverel then return end
+    if not target or not target:IsA("BasePart") then return end
 
-    local targetPos, onScreen = Camera:WorldToViewportPoint(target.Position)
+    local predictedPos = getPredictedPosition(target)
+    local targetScreenPos, onScreen = Camera:WorldToViewportPoint(predictedPos)
     if not onScreen then return end
-    
-    local mousePos = UserInputService:GetMouseLocation()
-    local delta = Vector2.new(targetPos.X - mousePos.X, targetPos.Y - mousePos.Y)
-    
-    if delta.Magnitude < 1 then return end
 
-    local moveVector = delta / mouseAimbotStrength
-    mousemoverel(moveVector.X, moveVector.Y)
+    -- Tenta usar mousemoverel se disponível
+    if mousemoverel then
+        local mousePos = UserInputService:GetMouseLocation()
+        local delta = Vector2.new(targetScreenPos.X - mousePos.X, targetScreenPos.Y - mousePos.Y)
+
+        if delta.Magnitude < 1 then return end
+
+        local moveVector = delta / mouseAimbotStrength
+        mousemoverel(moveVector.X, moveVector.Y)
+    else
+        -- FALLBACK: Usa modo câmera se mousemoverel não estiver disponível
+        smoothLookAt(target)
+    end
 end
 
 local function isAimKeyPressed()
@@ -1286,28 +1349,31 @@ end
     SISTEMA DE SILENT AIM - UNIVERSAL E SIMPLES
 ============================================================]]--
 
--- Função para obter o alvo mais próximo dentro do FOV
+-- MELHORADO: Função para obter o alvo mais próximo dentro do FOV (universal)
 local function getSilentAimTarget()
     local mousePos = UserInputService:GetMouseLocation()
     local closestPart = nil
     local shortestDist = aimbotFovRadius
-    
+
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= Player and player.Character then
             if friendsList[player.Name] then continue end
             if aimbotTeamCheck and player.Team == Player.Team then continue end
-            
+
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
             if not (humanoid and humanoid.Health > 0) then continue end
-            
-            local targetBodyPart = player.Character:FindFirstChild(aimbotTargetPart)
+
+            -- NOVO: Usa detecção automática de partes
+            local targetBodyPart = getBestTargetPart(player.Character)
             if not targetBodyPart then continue end
-            
-            local pos, onScreen = Camera:WorldToViewportPoint(targetBodyPart.Position)
+
+            -- NOVO: Usa posição prevista
+            local predictedPos = getPredictedPosition(targetBodyPart)
+            local pos, onScreen = Camera:WorldToViewportPoint(predictedPos)
             if not onScreen then continue end
-            
+
             local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-            
+
             if dist < shortestDist then
                 if aimbotWallCheck and not isVisible(targetBodyPart) then continue end
                 shortestDist = dist
@@ -1315,7 +1381,7 @@ local function getSilentAimTarget()
             end
         end
     end
-    
+
     return closestPart
 end
 
@@ -1323,19 +1389,21 @@ end
 local currentSilentTarget = nil
 local silentAimActive = false
 
--- Hook Universal do Mouse (Método mais compatível)
+-- MELHORADO: Hook Universal do Mouse com prediction
 local function setupMouseHitHook()
     pcall(function()
         local mt = getrawmetatable(game)
         local oldIndex = mt.__index
         setreadonly(mt, false)
-        
+
         mt.__index = newcclosure(function(self, key)
             if silentAimEnabled and silentAimActive and currentSilentTarget then
                 if tostring(self):find("Mouse") and (key == "Hit" or key == "Target") then
                     if math.random(1, 100) <= silentAimHitChance then
                         if key == "Hit" then
-                            return CFrame.new(currentSilentTarget.Position)
+                            -- NOVO: Usa posição prevista no Silent Aim
+                            local predictedPos = getPredictedPosition(currentSilentTarget)
+                            return CFrame.new(predictedPos)
                         elseif key == "Target" then
                             return currentSilentTarget
                         end
@@ -1344,9 +1412,9 @@ local function setupMouseHitHook()
             end
             return oldIndex(self, key)
         end)
-        
+
         setreadonly(mt, true)
-        print("✓ Silent Aim ativado (Mouse.Hit Hook)")
+        print("✓ Silent Aim ativado com prediction melhorada")
     end)
 end
 
@@ -1887,28 +1955,29 @@ RunService.RenderStepped:Connect(function()
         if currentAimbotTarget and currentAimbotTarget.Parent then
             local humanoid = currentAimbotTarget:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health > 0 then
-                -- CORRIGIDO: Verifica se a parte alvo atual ainda existe e é válida
-                local targetPart = currentAimbotTarget:FindFirstChild(aimbotTargetPart)
+                -- MELHORADO: Usa detecção automática de partes
+                local targetPart = getBestTargetPart(currentAimbotTarget)
                 if targetPart and isVisible(targetPart) then
-                    -- CORRIGIDO: Verifica se o alvo ainda está dentro do FOV
-                    local targetScreenPos = Camera:WorldToViewportPoint(targetPart.Position)
+                    -- Verifica se o alvo ainda está dentro do FOV com prediction
+                    local predictedPos = getPredictedPosition(targetPart)
+                    local targetScreenPos = Camera:WorldToViewportPoint(predictedPos)
                     local distanceFromAim = (Vector2.new(targetScreenPos.X, targetScreenPos.Y) - aimPoint).Magnitude
-                    
+
                     if distanceFromAim <= aimbotFovRadius then
                         isTargetValid = true
                     end
                 end
             end
         end
-        
+
         if not isTargetValid then
             local newTargetPart = getClosestPartToPoint(aimPoint)
             currentAimbotTarget = newTargetPart and newTargetPart.Parent
         end
-        
+
         if currentAimbotTarget then
-            -- CORRIGIDO: Usa aimbotTargetPart para mirar na parte correta
-            local partToAim = currentAimbotTarget:FindFirstChild(aimbotTargetPart)
+            -- MELHORADO: Usa getBestTargetPart para mirar na parte correta
+            local partToAim = getBestTargetPart(currentAimbotTarget)
             if partToAim then
                 if aimbotMode == "Câmera" then
                     smoothLookAt(partToAim)
@@ -1917,7 +1986,7 @@ RunService.RenderStepped:Connect(function()
                 end
             end
         end
-        
+
     else
         currentAimbotTarget = nil
     end
