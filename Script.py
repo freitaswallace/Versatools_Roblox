@@ -314,6 +314,21 @@ local HighlightToggleStroke = Instance.new("UIStroke", HighlightToggle)
 HighlightToggleStroke.Color = Theme.Stroke
 HighlightToggleStroke.Thickness = 1
 
+-- NOVO: Toggle para verificar times
+local TeamCheckToggle = Instance.new("TextButton", ESPPage)
+TeamCheckToggle.Text = "Verificar Times: NÃO"
+TeamCheckToggle.Size = UDim2.new(0, 200, 0, 50)
+TeamCheckToggle.Position = UDim2.new(0, 680, 0, 110)
+TeamCheckToggle.BackgroundColor3 = Theme.Error
+TeamCheckToggle.Font = Enum.Font.SourceSansBold
+TeamCheckToggle.TextColor3 = Theme.Text
+TeamCheckToggle.TextSize = 16
+local TeamCheckToggleCorner = Instance.new("UICorner", TeamCheckToggle)
+TeamCheckToggleCorner.CornerRadius = UDim.new(0, 8)
+local TeamCheckToggleStroke = Instance.new("UIStroke", TeamCheckToggle)
+TeamCheckToggleStroke.Color = Theme.Stroke
+TeamCheckToggleStroke.Thickness = 1
+
 -- NOVO: Card de busca de jogador
 local ESPSearchCard = Instance.new("Frame", ESPPage)
 ESPSearchCard.Name = "ESPSearchCard"
@@ -782,6 +797,7 @@ local ESPShowDistance = false  -- NOVO: Controla se mostra distância
 local ESPTargetPlayer = nil  -- NOVO: Jogador específico para focar (se houver)
 local HighlightEnabled = false  -- NOVO: Controla o contorno dos personagens
 local HighlightObjects = {}
+local TeamCheckEnabled = false  -- NOVO: Controla se verifica times (verde para aliados, vermelho para inimigos)
 -- Variáveis Rewind e Ball Mode
 local rewindEnabled = false
 local rewindPositions = {}
@@ -1023,13 +1039,25 @@ local highlightConnection = nil
 -- Função para criar/atualizar highlights
 local function UpdateHighlights()
     if not HighlightEnabled then return end
-    
+
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= Player then
             local character = player.Character
             if character then
                 local existingHighlight = character:FindFirstChild("ESPHighlight")
-                
+
+                -- Determina a cor baseada no time
+                local outlineColor = Color3.fromRGB(255, 70, 70)  -- Padrão: vermelho
+
+                if TeamCheckEnabled then
+                    -- Verifica se está no mesmo time
+                    if player.Team and Player.Team and player.Team == Player.Team then
+                        outlineColor = Color3.fromRGB(70, 255, 70)  -- Verde para aliados
+                    else
+                        outlineColor = Color3.fromRGB(255, 70, 70)  -- Vermelho para inimigos
+                    end
+                end
+
                 -- Se não tem highlight, cria
                 if not existingHighlight then
                     local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -1038,13 +1066,16 @@ local function UpdateHighlights()
                         highlight.Name = "ESPHighlight"
                         highlight.FillColor = Color3.fromRGB(255, 0, 0)
                         highlight.FillTransparency = 1
-                        highlight.OutlineColor = Color3.fromRGB(255, 70, 70)
+                        highlight.OutlineColor = outlineColor
                         highlight.OutlineTransparency = 0
                         highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                         highlight.Parent = character
 
                         print("✓ Highlight criado para: " .. player.Name)
                     end
+                else
+                    -- Atualiza a cor do highlight existente
+                    existingHighlight.OutlineColor = outlineColor
                 end
             end
         end
@@ -1129,6 +1160,36 @@ end)
 HighlightToggle.MouseLeave:Connect(function()
     local targetColor = HighlightEnabled and Theme.Success or Theme.Error
     TweenService:Create(HighlightToggle, AnimationInfo.Fast, {BackgroundColor3 = targetColor}):Play()
+end)
+
+--[[============================================================
+    LÓGICA DO TOGGLE DE VERIFICAR TIMES
+============================================================]]--
+
+-- NOVO: Lógica do toggle de Verificar Times
+TeamCheckToggle.MouseButton1Click:Connect(function()
+    TeamCheckEnabled = not TeamCheckEnabled
+    TeamCheckToggle.Text = "Verificar Times: " .. (TeamCheckEnabled and "SIM" or "NÃO")
+    TeamCheckToggle.BackgroundColor3 = TeamCheckEnabled and Theme.Success or Theme.Error
+
+    -- Atualiza as cores dos highlights já existentes
+    if HighlightEnabled then
+        UpdateHighlights()
+    end
+
+    print("Verificação de Times: " .. (TeamCheckEnabled and "ATIVADA" or "DESATIVADA"))
+end)
+
+-- Adiciona hover customizado para o botão de Verificar Times
+TeamCheckToggle.MouseEnter:Connect(function()
+    if not TeamCheckEnabled then
+        TweenService:Create(TeamCheckToggle, AnimationInfo.Fast, {BackgroundColor3 = Theme.AccentHover}):Play()
+    end
+end)
+
+TeamCheckToggle.MouseLeave:Connect(function()
+    local targetColor = TeamCheckEnabled and Theme.Success or Theme.Error
+    TweenService:Create(TeamCheckToggle, AnimationInfo.Fast, {BackgroundColor3 = targetColor}):Play()
 end)
 
 --[[============================================================
